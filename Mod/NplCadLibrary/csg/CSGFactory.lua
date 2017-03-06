@@ -99,7 +99,7 @@ function CSGFactory.cube(options)
 		table.insert(polygons,polygon);
 	end
 	
-	return CSG.fromPolygons(polygons)
+	return CSG.fromPolygons(polygons,true)
 end
 --[[
 //	Construct a solid sphere
@@ -168,7 +168,7 @@ function CSGFactory.sphere(options)
 			table.insert(polygons,CSGPolygon:new():init(vertices));
 		end
 	end
-	return CSG.fromPolygons(polygons);
+	return CSG.fromPolygons(polygons,true);
 end
 
 
@@ -258,7 +258,7 @@ function CSGFactory.cylinder(options)
 		end
 		
 	end
-  return CSG.fromPolygons(polygons);
+  return CSG.fromPolygons(polygons,true);
 end
 --[[
 	// Construct an axis-aligned solid rounded cuboid.

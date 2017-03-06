@@ -232,8 +232,8 @@ function CAG:_toPlanePolygons(options)
     -- only keep the polygons in the z plane:
     local polys = {};
 	for k,polygon in ipairs(csgplane.polygons) do
-		local normal = polygon:GetPlane():GetNormal();
-		if(math.abs(normal[2]) > 0.99) then
+		local plane = polygon:GetPlane();
+		if(math.abs(plane[2]) > 0.99) then
 		    if (flipped) then
 				polygon = polygon:clone():flip();
 			end

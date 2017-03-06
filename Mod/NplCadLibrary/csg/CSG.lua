@@ -36,13 +36,15 @@ local CSG = commonlib.inherit(nil, commonlib.gettable("Mod.NplCadLibrary.csg.CSG
 
 function CSG:ctor()
 	self.polygons = self.polygons or {};
+	self.convex = false;
 	tableext.clear(self.polygons);
 end
 
 --Construct a CSG solid from an array of Polygons
-function CSG.fromPolygons(polygons)
+function CSG.fromPolygons(polygons,convex)
 	local csg = CSG:new();
 	tableext.copy(csg.polygons,polygons,nil);
+	csg.convex = convex or false;
 	return csg;
 end
 
@@ -69,7 +71,7 @@ end
 -- clone csg node and polygons
 -- @param bDeepCopy: if true, we will perform deep copy, otherwise it is a shallow copy on write clone
 function CSG:clone(bDeepCopy)
-	local o = CSG.fromPolygons(self.polygons);
+	local o = CSG.fromPolygons(self.polygons,self.convex);
 	if(bDeepCopy) then
 		-- almost never called
 		o:detach();
@@ -136,18 +138,42 @@ function CSG:subtract(csg)
 	local aa = self:clone();
 	local bb = csg:clone();
 	LOG.std(nil, "info", "CSG:subtract", "vertex length of aa:%d,bb:%d", aa:getVertexCnt(), bb:getVertexCnt());
-	local a = CSGBSPNode:new():init(aa.polygons);
-	local b = CSGBSPNode:new():init(bb.polygons);
+	local fromTime = ParaGlobal.timeGetTime();
+	local a = CSGBSPNode:new():init(aa.polygons,aa.convex);
+	LOG.std(nil, "info", "a = CSG:subtract", "a = CSGBSPNode:new():init in %.3f seconds", (ParaGlobal.timeGetTime()-fromTime)/1000);
+	fromTime = ParaGlobal.timeGetTime();
+	local b = CSGBSPNode:new():init(bb.polygons,bb.convex);
+	LOG.std(nil, "info", "a = CSG:subtract", "b = CSGBSPNode:new():init in %.3f seconds", (ParaGlobal.timeGetTime()-fromTime)/1000);
 	LOG.std(nil, "info", "CSG:subtract", "vertex length of a:%d,b:%d", a:getVertexCnt(), b:getVertexCnt());
+
+	fromTime = ParaGlobal.timeGetTime();
 	a:invert();
+	LOG.std(nil, "info", "a = CSG:subtract", "a:invert() in %.3f seconds", (ParaGlobal.timeGetTime()-fromTime)/1000);
+	fromTime = ParaGlobal.timeGetTime();
     a:clipTo(b);
+	LOG.std(nil, "info", "a = CSG:subtract", "a:clipTo(b) in %.3f seconds", (ParaGlobal.timeGetTime()-fromTime)/1000);
+	fromTime = ParaGlobal.timeGetTime();
     b:clipTo(a);
+	LOG.std(nil, "info", "a = CSG:subtract", "b:clipTo(a) in %.3f seconds", (ParaGlobal.timeGetTime()-fromTime)/1000);
+	fromTime = ParaGlobal.timeGetTime();
     b:invert();
+	LOG.std(nil, "info", "a = CSG:subtract", "b:invert() in %.3f seconds", (ParaGlobal.timeGetTime()-fromTime)/1000);
+	fromTime = ParaGlobal.timeGetTime();
     b:clipTo(a);
+	LOG.std(nil, "info", "a = CSG:subtract", "b:clipTo(a) in %.3f seconds", (ParaGlobal.timeGetTime()-fromTime)/1000);
+	fromTime = ParaGlobal.timeGetTime();
     b:invert();
+	LOG.std(nil, "info", "a = CSG:subtract", "b:invert() in %.3f seconds", (ParaGlobal.timeGetTime()-fromTime)/1000);
+	fromTime = ParaGlobal.timeGetTime();
     a:build(b:allPolygons());
+	LOG.std(nil, "info", "a = CSG:subtract", "a:build(b:allPolygons()) in %.3f seconds", (ParaGlobal.timeGetTime()-fromTime)/1000);
+	fromTime = ParaGlobal.timeGetTime();
     a:invert();
-    return CSG.fromPolygons(a:allPolygons());
+	LOG.std(nil, "info", "a = CSG:subtract", "a:invert() in %.3f seconds", (ParaGlobal.timeGetTime()-fromTime)/1000);
+	fromTime = ParaGlobal.timeGetTime();
+	local csg_result = CSG.fromPolygons(a:allPolygons());
+	LOG.std(nil, "info", "a = CSG:subtract", "CSG.fromPolygons(a:allPolygons()) in %.3f seconds", (ParaGlobal.timeGetTime()-fromTime)/1000);
+    return csg_result;
 end
 -- Return a new CSG solid representing space both this solid and in the
 -- solid `csg`. Neither this solid nor the solid `csg` are modified.
@@ -169,8 +195,8 @@ function CSG:intersect(csg)
 	local aa = self:clone();
 	local bb = csg:clone();
 	LOG.std(nil, "info", "CSG:intersect", "vertex length of aa:%d,bb:%d", aa:getVertexCnt(), bb:getVertexCnt());
-	local a = CSGBSPNode:new():init(aa.polygons);
-	local b = CSGBSPNode:new():init(bb.polygons);
+	local a = CSGBSPNode:new():init(aa.polygons,aa.convex);
+	local b = CSGBSPNode:new():init(bb.polygons,bb.convex);
 	LOG.std(nil, "info", "CSG:intersect", "vertex length of a:%d,b:%d", a:getVertexCnt(), b:getVertexCnt());
 	a:invert();
     b:clipTo(a);

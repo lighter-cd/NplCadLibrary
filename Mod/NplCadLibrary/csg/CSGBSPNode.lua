@@ -41,12 +41,16 @@ end
 function CSGBSPNode:ctor()
 end
 
-function CSGBSPNode:init(polygons)
+function CSGBSPNode:init(polygons,convex)
 	self.plane = nil;
 	self.front = nil;
 	self.back = nil;
 	if (polygons) then
-		self:build(polygons);
+		if(convex) then
+			self:buildConvex(polygons);
+		else
+			self:build(polygons);
+		end
 	end
 	return self;
 end
@@ -230,8 +234,6 @@ local bor = mathlib.bit.bor;
 -- @param back: inout parameter.  if nil, it will be created and returned.
 -- @return front, back, coplanarFront, coplanarBack
 function CSGBSPNode:splitPolygon(polygon, coplanarFront, coplanarBack, front, back)
-    local plane_normal,plane_w = self.plane:GetNormal(), self.plane[4];
-	
 	--Classify each point as well as the entire polygon into one of the above four classes.
     local polygonType = 0;
     
@@ -239,7 +241,7 @@ function CSGBSPNode:splitPolygon(polygon, coplanarFront, coplanarBack, front, ba
 	local vertices = polygon.vertices;
 	for i = 1, #vertices do
 		local v = vertices[i];
-		local t = plane_normal:dot(v.pos) - plane_w;
+		local t = self.plane:signedDistanceToPoint(v.pos);
 		local type;
 		if(t < -EPSILON)then
 			type = BACK;
@@ -254,7 +256,8 @@ function CSGBSPNode:splitPolygon(polygon, coplanarFront, coplanarBack, front, ba
 	end
 
 	if(polygonType == COPLANAR)then
-		if(plane_normal:dot(polygon:GetPlane():GetNormal()) > 0)then
+		local plane = polygon:GetPlane();
+		if((self.plane[1] == plane[1]) and (self.plane[2] == plane[2]) and (self.plane[3] == plane[3]))then
 			coplanarFront = coplanarFront or {};
 			coplanarFront[#coplanarFront+1] = polygon;
 		else
@@ -310,4 +313,69 @@ function CSGBSPNode:splitPolygon(polygon, coplanarFront, coplanarBack, front, ba
 		end
 	end
 	return front, back, coplanarFront, coplanarBack;
+end
+
+
+function CSGBSPNode:buildConvex(polygons)
+	if(not polygons or #polygons == 0)then
+		return;
+	end
+	local front;
+	local back;
+
+	self.plane = polygons[1]:GetPlane();
+	
+	self.polygons = self.polygons or {};
+	self.polygons[#self.polygons+1] = polygons[1];
+
+	for i = 2, #polygons do
+		front, back, self.polygons = self:splitPolygonConvex(polygons[i], self.polygons, front, back);
+	end
+	
+	
+	if(front)then
+		if(not self.front)then
+			self.front = CSGBSPNode:new():init();
+		end
+		self.front:buildConvex(front);
+	end
+	if(back)then
+		if(not self.back)then
+			self.back = CSGBSPNode:new():init();
+		end
+		self.back:buildConvex(back);
+	end
+end
+function CSGBSPNode:splitPolygonConvex(polygon, coplanar, front, back)
+	--Classify each point as well as the entire polygon into one of the above four classes.
+    local polygonType = 0;
+    
+	-- tableext.clear(types);
+	local vertices = polygon.vertices;
+	local v_count = #vertices;
+	for i = 1, v_count do
+		local v = vertices[i];
+		local t = self.plane:signedDistanceToPoint(v.pos);
+		local type;
+		if(t < -EPSILON)then
+			polygonType = BACK;
+		elseif(t > EPSILON)then
+			polygonType = FRONT;
+		end
+		if(polygonType ~= 0) then
+			break
+		end
+	end
+
+	if(polygonType == COPLANAR)then
+		coplanar = coplanar or {};
+		coplanar[#coplanar+1] = polygon;
+	elseif(polygonType == FRONT)then
+		front = front or {};
+		front[#front+1] = polygon;
+	elseif(polygonType == BACK)then
+		back = back or {};
+		back[#back+1] = polygon;
+	end
+	return front, back, coplanar;
 end
