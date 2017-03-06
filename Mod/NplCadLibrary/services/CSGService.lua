@@ -16,11 +16,13 @@ NPL.load("(gl)script/ide/math/Matrix4.lua");
 NPL.load("(gl)script/ide/math/math3d.lua");
 NPL.load("(gl)Mod/NplCadLibrary/services/NplCadEnvironment.lua");
 NPL.load("(gl)Mod/NplCadLibrary/utils/matrix_decomp.lua");
+NPL.load("(gl)Mod/NplCadLibrary/core/Scene.lua");
 
 local Matrix4 = commonlib.gettable("mathlib.Matrix4");
 local CSGService = commonlib.gettable("Mod.NplCadLibrary.services.CSGService");
 local math3d = commonlib.gettable("mathlib.math3d");
 local NplCadEnvironment = commonlib.gettable("Mod.NplCadLibrary.services.NplCadEnvironment");
+local Scene = commonlib.gettable("Mod.NplCadLibrary.core.Scene");
 
 function CSGService.operateTwoNodes(pre_drawable_node,cur_drawable_node,drawable_action,operation_node)
 	local bResult = false;
@@ -108,19 +110,10 @@ end
 function CSGService.equalsColor(color_1,color_2)
 	return color_1 and color_2 and (color_1[1] == color_2[1] and color_1[2] == color_2[2] and color_1[3] == color_2[3]);
 end
--- build code from an existed file.
-function CSGService.buildFile(filepath)
-	if(not filepath)then
-		return
-	end
-	local full_path = ParaIO.GetCurDirectory(0)..filepath;
-	local file = ParaIO.open(full_path, "r");
-	if(file:IsValid()) then
-		local text = file:GetText();
-		file:close();
-		return CSGService.buildPageContent(text);
-	end
+function CSGService.clearOutPut()
+	CSGService.output = {};
 end
+-- build csg from an existed file or text.
 --[[
 	return {
 		successful = successful,
@@ -129,49 +122,51 @@ end
 		log = string, 
 	}
 --]]
-function CSGService.buildPageContent(code)
-	--commonlib.use_object_pool = true;
-
-	code = CSGService.appendLoadXmlFunction(code)
-	if(not code or code == "") then
-		return;
+function CSGService.build(filepathOrText,isFile)
+	if(not filepathOrText)then
+		return
 	end
-	local output = {}
-	local code_func, errormsg = loadstring(code);
-	if(code_func) then
-		local fromTime = ParaGlobal.timeGetTime();
-		LOG.std(nil, "info", "CSG", "\n------------------------------\nbegin render scene\n");
-
-		local env = NplCadEnvironment:new();
-		setfenv(code_func, env);
-		local ok, result = pcall(code_func);
-		if(ok) then
-			if(type(env.main) == "function") then
-				setfenv(env.main, env);
-				ok, result = pcall(env.main);
-			end
-		end
-		CSGService.scene = env.scene;
-		env.scene:log("finished compile scene in %.3f seconds", (ParaGlobal.timeGetTime()-fromTime)/1000);
-		LOG.std(nil, "info", "CSG", "\nfinished compile scene in %.3f seconds\n", (ParaGlobal.timeGetTime()-fromTime)/1000);
-		
-		local render_list = CSGService.getRenderList(env.scene)
-
-		env.scene:log("finished render scene in %.3f seconds", (ParaGlobal.timeGetTime()-fromTime)/1000);
-		LOG.std(nil, "info", "CSG", "\n\nfinished render scene in %.3f seconds\n------------------------------", (ParaGlobal.timeGetTime()-fromTime)/1000);
-
-		output.successful = ok;
-		output.csg_node_values = render_list;
-		output.compile_error = result;
-		output.log = table.concat(env.scene:GetAllLogs() or {}, "\n");
-
+	CSGService.clearOutPut();
+	local fromTime = ParaGlobal.timeGetTime();
+	LOG.std(nil, "info", "CSG", "\n------------------------------\nbegin render scene\n");
+	-- 1. create a env node
+	local env_node = NplCadEnvironment:new({filepath = filepathOrText});
+	-- 2. create a scene for renderering
+	local scene = Scene.create("nplcad_scene");
+	CSGService.scene = scene;
+	-- 3. building and get the result
+	if(isFile)then
+		env_node:buildFile(scene,filepathOrText);
 	else
-		output.successful = false;
-		output.compile_error =  errormsg;
-		output.log = errormsg;
+		env_node:build(scene,filepathOrText);
 	end
-	return output;
+
+	env_node.root_scene_node:log("finished compile scene in %.3f seconds", (ParaGlobal.timeGetTime()-fromTime)/1000);
+	LOG.std(nil, "info", "CSG", "\nfinished compile scene in %.3f seconds\n", (ParaGlobal.timeGetTime()-fromTime)/1000);
+		
+	local render_list = CSGService.getRenderList(scene)
+	env_node.root_scene_node:log("finished render scene in %.3f seconds", (ParaGlobal.timeGetTime()-fromTime)/1000);
+	LOG.std(nil, "info", "CSG", "\n\nfinished render scene in %.3f seconds\n------------------------------", (ParaGlobal.timeGetTime()-fromTime)/1000);
+
+
+	local function write_logs(log_table)
+		local logs = "";
+		local log_table = log_table or {};
+		local len = #log_table;
+		while( len > 0) do
+			local n = log_table[len];
+			if(n)then
+				logs = logs .. n .. "\n";
+			end
+			len = len - 1;
+		end
+		return logs;
+	end
+	CSGService.output.log = write_logs(CSGService.output.log);
+	CSGService.output.csg_node_values = render_list;
+	return CSGService.output;
 end
+--load xml to build csg
 function CSGService.appendLoadXmlFunction(code)
 	if(code)then
 		local first_line;

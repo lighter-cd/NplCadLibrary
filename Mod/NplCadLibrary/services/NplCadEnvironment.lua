@@ -76,9 +76,11 @@ end
 NplCadEnvironment.PI = 3.1415926;
 NplCadEnvironment.pi = NplCadEnvironment.PI;
 
-function NplCadEnvironment:new()
+function NplCadEnvironment:new(params)
+	params = params or {}
 	local o = {
-		scene =  Scene.create("nplcad_scene");
+		filepath = params.filepath,
+		root_scene_node = params.root_scene_node or Node.create(""),
 		nodes_stack = {},
 		math = math,
 		string = string,
@@ -88,8 +90,6 @@ function NplCadEnvironment:new()
 	o._G = o; 
 	setmetatable(o, self);
 	self.__index = self;
-	-- we need scene for log writing.
-	NplCadEnvironment.scene= o.scene;
 	return o;
 end
 
@@ -104,7 +104,7 @@ function NplCadEnvironment:getNode__()
 		if(node)then
 			return node;
 		end
-		return self.scene;
+		return self.root_scene_node;
 	end
 end
 function NplCadEnvironment.push()
@@ -148,11 +148,71 @@ function NplCadEnvironment.current()
 	return node;
 end
 
--- 'scene' new belong to NplCadEnvironment.
+-- NplCadEnvironment.log() belongs to NplCadEnvironment, Use NplCadEnvironment:internalLog() to debug code.
 function NplCadEnvironment.log(...)
-	NplCadEnvironment.scene:log(...);
+	local self = getfenv(2);
+	self:internalLog(...);
 end
+function NplCadEnvironment:internalLog(...)
+	self.root_scene_node:log(...);
+end
+--include----------------------------------------------------------------------------------------------------
+function NplCadEnvironment.include(filepath)
+	local self = getfenv(2);
+	local node = self:push__();
+	self:include__(node,filepath);
+end
+function NplCadEnvironment:include__(node,filepath)
+	if(not filepath)then return end
+	local index = string.find(self.filepath, "/[^/]*$")
+	local cur_dir = string.sub(self.filepath,1,index);
+	local full_filepath = cur_dir .. filepath;
+	--create a new env node
+	local env_node = NplCadEnvironment:new({ filepath = filepath, });
+	env_node:buildFile(node,full_filepath);
+end
+function NplCadEnvironment:loadFileContent(filepath)
+	if(not filepath)then
+		return
+	end
+	local full_path = ParaIO.GetCurDirectory(0)..filepath;
+	local file = ParaIO.open(full_path, "r");
+	if(file:IsValid()) then
+		local text = file:GetText();
+		file:close();
+		return text;
+	end
+end
+function NplCadEnvironment:buildFile(parent_scene_node,filepath)
+	local code = self:loadFileContent(filepath);
+	self.root_scene_node:log("start to build file:%s",filepath);
+	self:build(parent_scene_node,code);
+end
+function NplCadEnvironment:build(parent_scene_node,code)
+	local code_func, errormsg = loadstring(code);
+	if(code_func) then
+		setfenv(code_func, self);
+		local ok, result = pcall(code_func);
+		if(ok)then
+			if(parent_scene_node)then
+				parent_scene_node:addChild(self.root_scene_node);
+			end
+		end
+		CSGService.output.successful = ok;
+		CSGService.output.compile_error = result;
+		CSGService.output.log = CSGService.output.log or {};
 
+		local log = table.concat(self.root_scene_node:GetAllLogs() or {}, "\n");
+
+		CSGService.output.log[#(CSGService.output.log)+1] = log;
+
+	else
+		CSGService.output.successful = false;
+		CSGService.output.compile_error =  errormsg;
+		CSGService.output.log = errormsg;
+	end
+end
+--end include----------------------------------------------------------------------------------------------------
 function NplCadEnvironment.union()
 	local self = getfenv(2);
 	self:union__();
@@ -492,7 +552,7 @@ function NplCadEnvironment:translate__(p1,p2,p3,p4)
 			y = 0;
 			z = options[2];
 		else
-			NplCadEnvironment.log("translate should have 2 or 3 coords");
+			self:internalLog("translate should have 2 or 3 coords");
 			return;
 		end
 		obj = p2;
@@ -508,10 +568,10 @@ function NplCadEnvironment:translate__(p1,p2,p3,p4)
 			z = tonumber(p2);
 			obj = p3;	
 		else 
-			NplCadEnvironment.log("translate should have 2 or 3 coords");	
+			self:internalLog("translate should have 2 or 3 coords");	
 		end
 	else
-		NplCadEnvironment.log("translate should have a coords array");
+		self:internalLog("translate should have a coords array");
 		return;		
 	end
 	if(not obj)then
@@ -587,11 +647,11 @@ function NplCadEnvironment:scale__(options,obj)
 			y = 1;
 			z = options[2] or 1;
 		else
-			NplCadEnvironment.log("scale should have 2 or 3 coords");
+			self:internalLog("scale should have 2 or 3 coords");
 			return;
 		end
 	else
-		NplCadEnvironment.log("scale should have a coords array");
+		self:internalLog("scale should have a coords array");
 		return;		
 	end
 	if(not obj)then
@@ -1200,7 +1260,6 @@ function NplCadEnvironment.read_polyhedron(options)
 	if(o ~= nil) then
 		node:setDrawable(o);
 	end
-	NplCadEnvironment.log("read_polyhedron end");
 	return node;
 end
 

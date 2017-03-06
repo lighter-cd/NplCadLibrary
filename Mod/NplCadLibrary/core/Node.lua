@@ -346,3 +346,33 @@ function Node:findNodes(id,nodes_result,recursive,exactMatch)
 	end
 	return count;
 end
+
+-- write a log line
+-- @param input: any table or formatted string. 
+function Node:log(input, ...)
+	self.logs = self.logs or {};
+	local text;
+	if(type(input) == "string") then
+		local args = {...};
+		if(#args == 0) then
+			text = input;
+		else
+			text = string.format(input, ...);
+		end	
+	elseif(type(input) == "table") then	
+		text = commonlib.serialize_compact(input);
+	else
+		text = tostring(input);
+	end
+	LOG.std(nil, "info", "CSG.log", text);
+	self.logs[#(self.logs)+1] = tostring(text);
+end
+
+-- return array of log lines of nil. 
+function Node:GetAllLogs()
+	return self.logs;
+end
+
+function Node:ClearLogs()
+	self.logs = nil;
+end
